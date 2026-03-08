@@ -1,47 +1,103 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import yt_dlp
 
 app = Flask(__name__)
 
-YOUTUBE_API = "https://www.youtube.com/youtubei/v1/search?prettyPrint=false"
-
 @app.route("/")
 def home():
-    return "YouTube Proxy Running 🚀"
+    return "YouTube Music Proxy Running 🚀"
 
 @app.route("/ping")
 def ping():
     return "ok"
 
+# SEARCH API
 @app.route("/search")
 def search():
-    q = request.args.get("q", "")
+    q = request.args.get('q','')
 
-    payload = {
-        "context": {
-            "client": {
-                "clientName": "WEB",
-                "clientVersion": "2.20231121.08.00"
-            }
+    r = requests.post(
+        'https://www.youtube.com/youtubei/v1/search?prettyPrint=false',
+        json={
+            "context":{
+                "client":{
+                    "clientName":"WEB",
+                    "clientVersion":"2.20231121.08.00"
+                }
+            },
+            "query":q
         },
-        "query": q
+        headers={"User-Agent":"Mozilla/5.0"}
+    )
+
+    data = r.json()
+    videos = []
+
+    contents = (
+        data.get('contents', {})
+        .get('twoColumnSearchResultsRenderer', {})
+        .get('primaryContents', {})
+        .get('sectionListRenderer', {})
+        .get('contents', [])
+    )
+
+    for section in contents:
+        items = section.get('itemSectionRenderer', {}).get('contents', [])
+
+        for item in items:
+            video = item.get('videoRenderer')
+
+            if not video:
+                continue
+
+            video_id = video.get('videoId')
+
+            title = (
+                video.get('title', {})
+                .get('runs', [{}])[0]
+                .get('text', '')
+            )
+
+            thumbnail = (
+                video.get('thumbnail', {})
+                .get('thumbnails', [{}])[-1]
+                .get('url', '')
+            )
+
+            if video_id:
+                videos.append({
+                    "title": title,
+                    "videoId": video_id,
+                    "thumbnail": thumbnail
+                })
+
+    resp = jsonify(videos)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
+# STREAM API
+@app.route("/stream")
+def stream():
+    video_id = request.args.get("videoId")
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "format": "bestaudio/best"
     }
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        stream_url = info["url"]
 
-    try:
-        r = requests.post(YOUTUBE_API, json=payload, headers=headers)
-        data = r.json()
-
-        resp = jsonify(data)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-
-    except Exception as e:
-        return {"error": str(e)}, 500
+    return jsonify({
+        "stream": stream_url
+    })
 
 
 if __name__ == "__main__":
