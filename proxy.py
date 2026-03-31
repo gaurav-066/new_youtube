@@ -13,7 +13,7 @@ def home():
 def ping():
     return "ok"
 
-# ── 1. SEARCH API (Original) ──
+# ── 1. SEARCH API ──
 @app.route("/search")
 def search():
     q = request.args.get('q','')
@@ -78,18 +78,15 @@ def search():
     return resp
 
 
-# ── 2. PLAYLIST API (Corrected!) ──
+# ── 2. PLAYLIST API (Now filters out Private/Deleted videos!) ──
 @app.route("/playlist")
 def playlist():
     playlist_id = request.args.get('id', '')
     if not playlist_id:
         return jsonify([])
 
-    # Reconstruct the YouTube playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
 
-    # extract_flat=True makes this run instantly without downloading videos
-    # playlistend=50 prevents server timeouts on massive playlists!
     ydl_opts = {
         "quiet": True,
         "extract_flat": True, 
@@ -102,20 +99,28 @@ def playlist():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Loop through the videos in the playlist
             if 'entries' in info:
                 for entry in info['entries']:
+                    title = entry.get('title', '')
+                    video_id = entry.get('id')
+
+                    # 1. Skip if there's no ID or Title at all
+                    if not video_id or not title:
+                        continue
+                    
+                    # 2. Skip YouTube's ghost placeholders
+                    if title.lower() in ['[private video]', '[deleted video]']:
+                        continue
+
                     # Get the best thumbnail available
                     thumbnails = entry.get('thumbnails', [])
                     thumb_url = thumbnails[-1]['url'] if thumbnails else ''
                     
-                    # Some unavailable videos might not have an ID or title
-                    if entry.get('id') and entry.get('title'):
-                        videos.append({
-                            "title": entry.get('title'),
-                            "videoId": entry.get('id'),
-                            "thumbnail": thumb_url
-                        })
+                    videos.append({
+                        "title": title,
+                        "videoId": video_id,
+                        "thumbnail": thumb_url
+                    })
     except Exception as e:
         print(f"Error fetching playlist: {e}")
         
@@ -124,7 +129,7 @@ def playlist():
     return resp
 
 
-# ── 3. STREAM API (Original) ──
+# ── 3. STREAM API ──
 @app.route("/stream")
 def stream():
     video_id = request.args.get("videoId")
