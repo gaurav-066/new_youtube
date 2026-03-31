@@ -78,7 +78,7 @@ def search():
     return resp
 
 
-# ── 2. PLAYLIST API (New!) ──
+# ── 2. PLAYLIST API (Corrected!) ──
 @app.route("/playlist")
 def playlist():
     playlist_id = request.args.get('id', '')
@@ -89,10 +89,12 @@ def playlist():
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
 
     # extract_flat=True makes this run instantly without downloading videos
+    # playlistend=50 prevents server timeouts on massive playlists!
     ydl_opts = {
         "quiet": True,
         "extract_flat": True, 
-        "skip_download": True
+        "skip_download": True,
+        "playlistend": 40 
     }
 
     videos = []
