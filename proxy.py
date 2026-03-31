@@ -13,7 +13,7 @@ def home():
 def ping():
     return "ok"
 
-# SEARCH API
+# ── 1. SEARCH API (Original) ──
 @app.route("/search")
 def search():
     q = request.args.get('q','')
@@ -78,7 +78,51 @@ def search():
     return resp
 
 
-# STREAM API
+# ── 2. PLAYLIST API (New!) ──
+@app.route("/playlist")
+def playlist():
+    playlist_id = request.args.get('id', '')
+    if not playlist_id:
+        return jsonify([])
+
+    # Reconstruct the YouTube playlist URL
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+
+    # extract_flat=True makes this run instantly without downloading videos
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True, 
+        "skip_download": True
+    }
+
+    videos = []
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            # Loop through the videos in the playlist
+            if 'entries' in info:
+                for entry in info['entries']:
+                    # Get the best thumbnail available
+                    thumbnails = entry.get('thumbnails', [])
+                    thumb_url = thumbnails[-1]['url'] if thumbnails else ''
+                    
+                    # Some unavailable videos might not have an ID or title
+                    if entry.get('id') and entry.get('title'):
+                        videos.append({
+                            "title": entry.get('title'),
+                            "videoId": entry.get('id'),
+                            "thumbnail": thumb_url
+                        })
+    except Exception as e:
+        print(f"Error fetching playlist: {e}")
+        
+    resp = jsonify(videos)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
+# ── 3. STREAM API (Original) ──
 @app.route("/stream")
 def stream():
     video_id = request.args.get("videoId")
@@ -95,9 +139,11 @@ def stream():
         info = ydl.extract_info(url, download=False)
         stream_url = info["url"]
 
-    return jsonify({
+    resp = jsonify({
         "stream": stream_url
     })
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
 
 
 if __name__ == "__main__":
