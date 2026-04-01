@@ -24,7 +24,7 @@ def search():
         "quiet": True,
         "extract_flat": True,
         "force_generic_extractor": False,
-        "default_search": "ytsearch10",
+        "default_search": "ytsearch20",
     }
 
     videos = []
