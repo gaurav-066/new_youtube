@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify
-import requests
+from flask_cors import CORS  # Import this
 import os
 import yt_dlp
 
 app = Flask(__name__)
+CORS(app)  # This enables CORS for all routes automatically
 
 @app.route("/")
 def home():
@@ -13,7 +14,7 @@ def home():
 def ping():
     return "ok"
 
-# ── 1. SEARCH API (Optimized for Speed) ──
+# ── 1. SEARCH API ──
 @app.route("/search")
 def search():
     q = request.args.get('q','')
@@ -24,14 +25,15 @@ def search():
         "quiet": True,
         "extract_flat": True,
         "force_generic_extractor": False,
-        "default_search": "ytsearch20",
+        "default_search": "ytsearch",
+        "nocheckcertificate": True, # Fixes SSL issues on some servers
     }
 
     videos = []
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # We search directly via yt-dlp to avoid manually parsing complex JSON
-            info = ydl.extract_info(f"ytsearch10:{q}", download=False)
+            # Note: Changed to ytsearch20 to match your intended limit
+            info = ydl.extract_info(f"ytsearch20:{q}", download=False)
             if 'entries' in info:
                 for entry in info['entries']:
                     if entry:
@@ -43,9 +45,7 @@ def search():
     except Exception as e:
         print(f"Search error: {e}")
 
-    resp = jsonify(videos)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    return jsonify(videos)
 
 # ── 2. PLAYLIST API ──
 @app.route("/playlist")
@@ -59,7 +59,8 @@ def playlist():
         "quiet": True,
         "extract_flat": True, 
         "skip_download": True,
-        "playlistend": 40 
+        "playlistend": 40,
+        "nocheckcertificate": True
     }
 
     videos = []
@@ -81,11 +82,9 @@ def playlist():
     except Exception as e:
         print(f"Error fetching playlist: {e}")
         
-    resp = jsonify(videos)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    return jsonify(videos)
 
-# ── 3. STREAM API (Fixed with Safety Net) ──
+# ── 3. STREAM API ──
 @app.route("/stream")
 def stream():
     video_id = request.args.get("videoId")
@@ -94,32 +93,37 @@ def stream():
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # Adding a real User-Agent helps slightly with the bot detection
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
         "format": "bestaudio/best",
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        # Adding these help avoid the "Video Unavailable" glitch
+        "noplaylist": True,
+        "extract_flat": False
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            # Some videos return 'url', others return 'formats'
             stream_url = info.get("url")
             
+            if not stream_url and "formats" in info:
+                # Fallback to the first available audio format if 'url' is missing
+                audio_formats = [f for f in info["formats"] if f.get("acodec") != "none"]
+                if audio_formats:
+                    stream_url = audio_formats[-1]["url"]
+
             if not stream_url:
                 return jsonify({"error": "Could not find stream"}), 404
 
-            resp = jsonify({"stream": stream_url})
-            resp.headers['Access-Control-Allow-Origin'] = '*'
-            return resp
+            return jsonify({"stream": stream_url})
 
     except Exception as e:
         print(f"CRITICAL: yt-dlp failed for {video_id}: {e}")
-        # Return a 403 (Forbidden) instead of crashing with a 500
-        resp = jsonify({"error": "YouTube blocked this request", "details": str(e)})
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp, 403
+        return jsonify({"error": "YouTube blocked this request", "details": str(e)}), 403
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3001)))
