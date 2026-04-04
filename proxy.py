@@ -61,18 +61,24 @@ def search():
                         "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                     })
 
-            # ── PLAYLISTS (NEW BLOCK) ──
-            if 'entries' in playlist_info:
-                for entry in playlist_info['entries']:
-                    if not entry:
-                        continue
+            # ── PLAYLISTS (FINAL FIX) ──
+if 'entries' in playlist_info:
+    for entry in playlist_info['entries']:
+        if not entry:
+            continue
 
-                    results.append({
-                        "type": "playlist",
-                        "title": entry.get("title"),
-                        "playlistId": entry.get("id"),
-                        "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
-                    })
+        pid = entry.get("id")
+
+        # 🔥 FILTER REAL PLAYLIST IDS ONLY
+        if not pid or not (pid.startswith("PL") or pid.startswith("UU") or pid.startswith("RD")):
+            continue
+
+        results.append({
+            "type": "playlist",
+            "title": entry.get("title"),
+            "playlistId": pid,
+            "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
+        })
 
     except Exception as e:
         print(f"Search error: {e}")
