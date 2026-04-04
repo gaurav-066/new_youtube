@@ -17,8 +17,6 @@ def ping():
 # ── 1. SEARCH API ──
 @app.route("/search")
 def search():
-    import time
-
     q = request.args.get('q','')
     if not q:
         return jsonify([])
@@ -26,63 +24,29 @@ def search():
     ydl_opts = {
         "quiet": True,
         "extract_flat": True,
+        "force_generic_extractor": False,
         "default_search": "ytsearch",
-        "nocheckcertificate": True,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
+        "nocheckcertificate": True, # Fixes SSL issues on some servers
     }
 
-    results = []
-
+    videos = []
     try:
-        time.sleep(0.3)
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
-            # 🔥 VIDEO SEARCH (same)
-            video_info = ydl.extract_info(f"ytsearch10:{q}", download=False)
-
-            # 🔥 PLAYLIST SEARCH (added)
-            playlist_info = ydl.extract_info(f"ytsearch5:{q} playlist", download=False)
-
-            # ── VIDEOS ──
-            if 'entries' in video_info:
-                for entry in video_info['entries']:
-                    if not entry:
-                        continue
-
-                    video_id = entry.get("id")
-                    results.append({
-                        "type": "video",
-                        "title": entry.get("title"),
-                        "videoId": video_id,
-                        "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                    })
-
-            # ── PLAYLISTS (SAFE FILTER) ──
-            if 'entries' in playlist_info:
-                for entry in playlist_info['entries']:
-                    if not entry:
-                        continue
-
-                    # ONLY REAL PLAYLIST
-                    if entry.get("_type") != "playlist":
-                        continue
-
-                    results.append({
-                        "type": "playlist",
-                        "title": entry.get("title"),
-                        "playlistId": entry.get("id"),
-                        "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
-                    })
-
+            # Note: Changed to ytsearch20 to match your intended limit
+            info = ydl.extract_info(f"ytsearch20:{q}", download=False)
+            if 'entries' in info:
+                for entry in info['entries']:
+                    if entry:
+                        videos.append({
+                            "title": entry.get("title"),
+                            "videoId": entry.get("id"),
+                            "thumbnail": f"https://i.ytimg.com/vi/{entry.get('id')}/hqdefault.jpg"
+                        })
     except Exception as e:
         print(f"Search error: {e}")
 
-    return jsonify(results)
-    
+    return jsonify(videos)
+
 # ── 2. PLAYLIST API ──
 @app.route("/playlist")
 def playlist():
@@ -123,8 +87,6 @@ def playlist():
 # ── 3. STREAM API ──
 @app.route("/stream")
 def stream():
-    from datetime import datetime
-
     video_id = request.args.get("videoId")
     if not video_id:
         return jsonify({"error": "No videoId"}), 400
@@ -137,6 +99,7 @@ def stream():
         "format": "bestaudio/best",
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        # Adding these help avoid the "Video Unavailable" glitch
         "noplaylist": True,
         "extract_flat": False
     }
@@ -144,11 +107,11 @@ def stream():
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-
-            # ── Get stream URL ──
+            # Some videos return 'url', others return 'formats'
             stream_url = info.get("url")
-
+            
             if not stream_url and "formats" in info:
+                # Fallback to the first available audio format if 'url' is missing
                 audio_formats = [f for f in info["formats"] if f.get("acodec") != "none"]
                 if audio_formats:
                     stream_url = audio_formats[-1]["url"]
@@ -156,34 +119,11 @@ def stream():
             if not stream_url:
                 return jsonify({"error": "Could not find stream"}), 404
 
-            # ── Format upload date ──
-            upload_date = info.get("upload_date")
-            formatted_date = None
-
-            if upload_date:
-                try:
-                    formatted_date = datetime.strptime(upload_date, "%Y%m%d").strftime("%d %b %Y")
-                except:
-                    formatted_date = upload_date  # fallback
-
-            # ── Return full data ──
-            return jsonify({
-                "stream": stream_url,
-                "title": info.get("title"),
-                "uploader": info.get("uploader"),
-                "uploadDate": formatted_date,
-                "duration": info.get("duration"),
-                "views": info.get("view_count"),
-                "likeCount": info.get("like_count"),
-                "thumbnail": info.get("thumbnail")
-            })
+            return jsonify({"stream": stream_url})
 
     except Exception as e:
         print(f"CRITICAL: yt-dlp failed for {video_id}: {e}")
-        return jsonify({
-            "error": "YouTube blocked this request",
-            "details": str(e)
-        }), 403
+        return jsonify({"error": "YouTube blocked this request", "details": str(e)}), 403
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3001)))
