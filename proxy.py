@@ -17,6 +17,8 @@ def ping():
 # ── 1. SEARCH API ──
 @app.route("/search")
 def search():
+    import time
+
     q = request.args.get('q','')
     if not q:
         return jsonify([])
@@ -24,28 +26,49 @@ def search():
     ydl_opts = {
         "quiet": True,
         "extract_flat": True,
-        "force_generic_extractor": False,
         "default_search": "ytsearch",
-        "nocheckcertificate": True, # Fixes SSL issues on some servers
+        "nocheckcertificate": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
     }
 
-    videos = []
+    results = []
+
     try:
+        time.sleep(0.3)  # anti-rate-limit
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Note: Changed to ytsearch20 to match your intended limit
-            info = ydl.extract_info(f"ytsearch20:{q}", download=False)
+            info = ydl.extract_info(f"ytsearch15:{q}", download=False)
+
             if 'entries' in info:
                 for entry in info['entries']:
-                    if entry:
-                        videos.append({
+                    if not entry:
+                        continue
+
+                    # 🔥 CHECK TYPE
+                    if entry.get("_type") == "playlist":
+                        results.append({
+                            "type": "playlist",
                             "title": entry.get("title"),
-                            "videoId": entry.get("id"),
-                            "thumbnail": f"https://i.ytimg.com/vi/{entry.get('id')}/hqdefault.jpg"
+                            "playlistId": entry.get("id"),
+                            "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
                         })
+
+                    else:
+                        video_id = entry.get("id")
+                        results.append({
+                            "type": "video",
+                            "title": entry.get("title"),
+                            "videoId": video_id,
+                            "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                        })
+
     except Exception as e:
         print(f"Search error: {e}")
 
-    return jsonify(videos)
+    return jsonify(results)
 
 # ── 2. PLAYLIST API ──
 @app.route("/playlist")
