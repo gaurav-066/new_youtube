@@ -40,36 +40,45 @@ def search():
         time.sleep(0.3)  # anti-rate-limit
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch15:{q}", download=False)
 
-            if 'entries' in info:
-                for entry in info['entries']:
+            # 🔥 ORIGINAL SEARCH (KEEPED SAME)
+            video_info = ydl.extract_info(f"ytsearch10:{q}", download=False)
+
+            # 🔥 NEW: PLAYLIST SEARCH (ADDED)
+            playlist_info = ydl.extract_info(f"ytsearch5:{q} playlist", download=False)
+
+            # ── VIDEOS (same as before) ──
+            if 'entries' in video_info:
+                for entry in video_info['entries']:
                     if not entry:
                         continue
 
-                    # 🔥 CHECK TYPE
-                    if entry.get("_type") == "playlist":
-                        results.append({
-                            "type": "playlist",
-                            "title": entry.get("title"),
-                            "playlistId": entry.get("id"),
-                            "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
-                        })
+                    video_id = entry.get("id")
+                    results.append({
+                        "type": "video",
+                        "title": entry.get("title"),
+                        "videoId": video_id,
+                        "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                    })
 
-                    else:
-                        video_id = entry.get("id")
-                        results.append({
-                            "type": "video",
-                            "title": entry.get("title"),
-                            "videoId": video_id,
-                            "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                        })
+            # ── PLAYLISTS (NEW BLOCK) ──
+            if 'entries' in playlist_info:
+                for entry in playlist_info['entries']:
+                    if not entry:
+                        continue
+
+                    results.append({
+                        "type": "playlist",
+                        "title": entry.get("title"),
+                        "playlistId": entry.get("id"),
+                        "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
+                    })
 
     except Exception as e:
         print(f"Search error: {e}")
 
     return jsonify(results)
-
+    
 # ── 2. PLAYLIST API ──
 @app.route("/playlist")
 def playlist():
