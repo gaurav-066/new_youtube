@@ -37,17 +37,17 @@ def search():
     results = []
 
     try:
-        time.sleep(0.3)  # anti-rate-limit
+        time.sleep(0.3)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            # 🔥 ORIGINAL SEARCH (KEEPED SAME)
+            # 🔥 VIDEO SEARCH (same)
             video_info = ydl.extract_info(f"ytsearch10:{q}", download=False)
 
-            # 🔥 NEW: PLAYLIST SEARCH (ADDED)
+            # 🔥 PLAYLIST SEARCH (added)
             playlist_info = ydl.extract_info(f"ytsearch5:{q} playlist", download=False)
 
-            # ── VIDEOS (same as before) ──
+            # ── VIDEOS ──
             if 'entries' in video_info:
                 for entry in video_info['entries']:
                     if not entry:
@@ -61,24 +61,22 @@ def search():
                         "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                     })
 
-            # ── PLAYLISTS (FINAL FIX) ──
-if 'entries' in playlist_info:
-    for entry in playlist_info['entries']:
-        if not entry:
-            continue
+            # ── PLAYLISTS (SAFE FILTER) ──
+            if 'entries' in playlist_info:
+                for entry in playlist_info['entries']:
+                    if not entry:
+                        continue
 
-        pid = entry.get("id")
+                    # ONLY REAL PLAYLIST
+                    if entry.get("_type") != "playlist":
+                        continue
 
-        # 🔥 FILTER REAL PLAYLIST IDS ONLY
-        if not pid or not (pid.startswith("PL") or pid.startswith("UU") or pid.startswith("RD")):
-            continue
-
-        results.append({
-            "type": "playlist",
-            "title": entry.get("title"),
-            "playlistId": pid,
-            "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
-        })
+                    results.append({
+                        "type": "playlist",
+                        "title": entry.get("title"),
+                        "playlistId": entry.get("id"),
+                        "thumbnail": entry.get("thumbnails", [{}])[-1].get("url", "")
+                    })
 
     except Exception as e:
         print(f"Search error: {e}")
