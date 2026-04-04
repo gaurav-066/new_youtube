@@ -110,6 +110,8 @@ def playlist():
 # ── 3. STREAM API ──
 @app.route("/stream")
 def stream():
+    from datetime import datetime
+
     video_id = request.args.get("videoId")
     if not video_id:
         return jsonify({"error": "No videoId"}), 400
@@ -122,7 +124,6 @@ def stream():
         "format": "bestaudio/best",
         "nocheckcertificate": True,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        # Adding these help avoid the "Video Unavailable" glitch
         "noplaylist": True,
         "extract_flat": False
     }
@@ -130,11 +131,11 @@ def stream():
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            # Some videos return 'url', others return 'formats'
+
+            # ── Get stream URL ──
             stream_url = info.get("url")
-            
+
             if not stream_url and "formats" in info:
-                # Fallback to the first available audio format if 'url' is missing
                 audio_formats = [f for f in info["formats"] if f.get("acodec") != "none"]
                 if audio_formats:
                     stream_url = audio_formats[-1]["url"]
@@ -142,11 +143,34 @@ def stream():
             if not stream_url:
                 return jsonify({"error": "Could not find stream"}), 404
 
-            return jsonify({"stream": stream_url})
+            # ── Format upload date ──
+            upload_date = info.get("upload_date")
+            formatted_date = None
+
+            if upload_date:
+                try:
+                    formatted_date = datetime.strptime(upload_date, "%Y%m%d").strftime("%d %b %Y")
+                except:
+                    formatted_date = upload_date  # fallback
+
+            # ── Return full data ──
+            return jsonify({
+                "stream": stream_url,
+                "title": info.get("title"),
+                "uploader": info.get("uploader"),
+                "uploadDate": formatted_date,
+                "duration": info.get("duration"),
+                "views": info.get("view_count"),
+                "likeCount": info.get("like_count"),
+                "thumbnail": info.get("thumbnail")
+            })
 
     except Exception as e:
         print(f"CRITICAL: yt-dlp failed for {video_id}: {e}")
-        return jsonify({"error": "YouTube blocked this request", "details": str(e)}), 403
+        return jsonify({
+            "error": "YouTube blocked this request",
+            "details": str(e)
+        }), 403
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3001)))
